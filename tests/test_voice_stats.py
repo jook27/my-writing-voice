@@ -235,5 +235,61 @@ class CliContract(unittest.TestCase):
         self.assertIn("참고", r.stdout)
 
 
+class Holdout(unittest.TestCase):
+    """Leave-one-out: every fold's draft is the writer's own writing, so every
+    flag it produces is a false positive by construction."""
+
+    SENTS = ["쌀통을 기울여야 한 컵이 나왔다.", "어머니는 그걸 매일 아침에 했다.",
+             "나는 그 소리로 잠에서 깼다.", "그 소리가 짧으면 밥이 적었다.",
+             "학교에서는 아무 말도 하지 않았다.", "도시락을 열면 김치와 밥이었다."]
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def corpus(self, count, repeats=12):
+        os.makedirs(os.path.join(self.dir, "c"), exist_ok=True)
+        paths = []
+        for i in range(count):
+            rotated = self.SENTS[i:] + self.SENTS[:i]
+            body = ""
+            for _ in range(repeats):
+                for j in range(0, len(rotated), 3):
+                    body += "\n".join(rotated[j:j + 3]) + "\n\n"
+            p = os.path.join(self.dir, "c", f"s{i}.md")
+            with open(p, "w", encoding="utf-8") as fh:
+                fh.write("---\nmode: 회고·서사\nsource: user\n---\n\n" + body)
+            paths.append(p)
+        return paths
+
+    def test_refuses_below_three_samples(self):
+        r = run(*self.corpus(2), "--holdout")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("3편 이상", r.stderr)
+
+    def test_reports_a_false_positive_rate(self):
+        r = run(*self.corpus(4), "--holdout")
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("전체 오탐률", r.stdout)
+        self.assertIn("권장", r.stdout)
+
+    def test_identical_samples_produce_no_false_positives(self):
+        """A corpus with no internal variation must flag nothing."""
+        os.makedirs(os.path.join(self.dir, "same"), exist_ok=True)
+        body = "장면을 먼저 적는다.\n해석은 나중이다.\n\n" * 40
+        paths = []
+        for i in range(4):
+            p = os.path.join(self.dir, "same", f"s{i}.md")
+            with open(p, "w", encoding="utf-8") as fh:
+                fh.write(body)
+            paths.append(p)
+        r = run(*paths, "--holdout")
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("전체 오탐률 0%", r.stdout)
+
+    def test_thin_folds_are_excluded_not_counted(self):
+        r = run(*self.corpus(3, repeats=1), "--holdout")
+        self.assertIn("제외했습니다", r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

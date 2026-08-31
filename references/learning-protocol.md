@@ -108,7 +108,9 @@ A profile that trains on generated text converges on model-average prose within 
 
 **Deviation is not always error.** When `--compare` flags a difference, ask whether the genre explains it before revising. A 사업계획서 with shorter sentences than the memoir corpus is correct. Record the justified deviation in the profile's transfer notes so the same question is not re-litigated next time.
 
-**No fabrication.** If the store is empty or the mode has no coverage, say so. Do not synthesize a profile from what the user's writing "probably" looks like.
+**No fabrication.** If the store is empty or the mode has no coverage, say so. Do not synthesize a profile from what the user's writing "probably" looks like. Sample text you generated to demonstrate the tool is not corpus, however realistic it reads.
+
+**No ironing.** Do not move a draft toward the corpus mean to clear a flag. A writer is recognizable by variance more than by average, so a draft edited until every row reads `ok` has drifted in the one direction these metrics cannot detect. A falling `sent_len_sd` is the signature.
 
 **Watch the drift markers.** These usually indicate the model, not the user:
 
@@ -129,5 +131,6 @@ Run on 진단, or whenever the corpus changes.
 - **Sample age.** Flag a corpus whose newest sample is over a year old.
 - **Trait conflicts.** Flag traits contradicted by a later sample and not yet resolved.
 - **Feedback volume.** Many rules in one mode usually means the profile itself is wrong for that mode — propose re-deriving it rather than accumulating patches.
+- **Tolerance fit.** With three or more samples, run `--holdout`. It flags the user's own writing against baselines built from their other pieces, so its false-positive rate says whether the tolerances fit this writer. A metric that flags real prose half the time is miscalibrated, not diagnostic; a metric whose fold-to-fold spread is large may be meaningless for this person and should be weighted down.
 
 Report health honestly. "샘플 2편, 총 700자입니다. 회고·서사만 반영되어 있어 사업 문서에서는 신뢰도가 낮습니다" is a more useful answer than a confident draft.

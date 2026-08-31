@@ -14,7 +14,7 @@ Most "write like me" prompts fail the same three ways. They forget everything be
 ```
 
 1. **Register a sample.** Your own writing goes into a local corpus, stored verbatim.
-2. **Measure it.** `voice_stats.py` computes sentence-length distribution, 종결어미 mix, connective density, hedge rate, and lexical variety.
+2. **Measure it.** `voice_stats.py` computes sentence-length distribution, 종결어미 mix, connective density, hedge rate, and length-normalized lexical variety (MATTR).
 3. **Build a profile.** Traits that repeat across samples become durable. Traits seen once stay provisional and say so.
 4. **Draft.** Claude writes in the target mode, transferring durable traits rather than copying surface form.
 5. **Verify.** The draft is measured against the corpus. Deviations are triaged: justified by genre, or model drift.
@@ -48,7 +48,7 @@ On Windows PowerShell:
 git clone https://github.com/jook27/my-writing-voice.git "$env:USERPROFILE\.claude\skills\my-writing-voice"
 ```
 
-Restart Claude Code if the skill is not discovered immediately. Python 3.8+ is optional — without it the verification step falls back to a qualitative read, and Claude will say so.
+Restart Claude Code if the skill is not discovered immediately. Python 3.9+ is needed for the verification step; without it Claude falls back to a qualitative read and has to say that is what it did.
 
 ## Use
 
@@ -135,13 +135,34 @@ Two things are load-bearing in that output.
 
 Exit codes: `0` clean, `2` something flagged, `1` the tool failed.
 
+### Calibrating the tolerances
+
+The tolerance numbers this tool flags against were chosen by hand. Nobody has measured how much *you* vary between your own pieces — and until someone does, "확인 필요" is a guess wearing a number.
+
+`--holdout` measures it. It rebuilds the baseline without one sample, runs that sample through as if it were a draft, and repeats for every file. Every draft is your own writing, so every flag is a false alarm by construction:
+
+```bash
+python3 ~/.claude/skills/my-writing-voice/scripts/voice_stats.py ~/.claude/my-writing-voice/corpus/*.md --holdout
+```
+
+```text
+지표                            폴드  오탐   오탐률   현재 허용치  실측 최대     권장
+sent_len_mean                      4     0       0%          0.20       0.18     0.22
+short_ratio                        4     2      50%          0.12       0.19     0.23
+connectives_per_100_sent           3     3     100%          0.60       1.00     1.20
+
+전체 오탐률 29% (10/34)
+```
+
+A metric that flags your own prose half the time is not detecting drift; its tolerance is wrong. A metric whose fold-to-fold spread is huge may simply be meaningless *for you* — some writers' comma density swings by a factor of five between pieces, and warning them about it is pure noise. Needs three or more samples.
+
 ### Tests
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-26 regression tests, standard library only, run on Python 3.9/3.11/3.13 in CI. Each one pins a measurement that was once wrong — 개조식 lists counted as one long sentence, `1,200억` counted as a comma, `즉시` counted as the connective `즉`, TTR that fell with length so no draft could ever match a corpus.
+30 regression tests, standard library only, run on Python 3.9/3.11/3.13 in CI. Each one pins a measurement that was once wrong — 개조식 lists counted as one long sentence, `1,200억` counted as a comma, `즉시` counted as the connective `즉`, TTR that fell with length so no draft could ever match a corpus.
 
 ## Structure
 
@@ -154,11 +175,12 @@ my-writing-voice/
 │   ├── voice-dimensions.md         # the 12-dimension analysis rubric
 │   ├── mode-playbooks.md           # per-mode transfer rules
 │   ├── learning-protocol.md        # store updates, precedence, anti-drift
+│   ├── essay-craft.md              # personal-essay craft, evidence-labeled
 │   └── profile-template.md         # empty skeleton for a new store
 ├── scripts/
 │   └── voice_stats.py              # metrics + draft comparison
 └── tests/
-    └── test_voice_stats.py         # regression suite (CI: 3.9 / 3.11 / 3.13)
+    └── test_voice_stats.py         # 30 regression tests (CI: 3.9 / 3.11 / 3.13)
 ```
 
 ## Requirements and portability
