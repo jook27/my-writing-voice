@@ -22,16 +22,19 @@ Most "write like me" prompts fail the same three ways. They forget everything be
 
 ## What's different from v0.1
 
-| | v0.1 | v0.2 (현재) |
+| | v0.1 | v0.2.1 (현재) |
 | --- | --- | --- |
 | Memory | none — fresh sample every session | local voice store, warm start |
 | Profile | prose description | prose + measured metrics |
-| Verification | none | draft-vs-corpus comparison |
+| Verification | none | draft-vs-corpus comparison, with a sample-size gate |
 | Feedback | lost when the session ended | append-only rule file, highest precedence |
 | Shipped baseline | the author's personal memoir | template only — no one's voice in the package |
 | Drift protection | none | corpus purity, repetition-over-recency, drift markers |
+| Instrumentation | none | 26 regression tests, CI on three Python versions |
 
 The fifth row was a real defect: installing v0.1 calibrated your writing against a stranger's childhood memoir. The package now ships a method, not a person.
+
+The last row is v0.2.1, and it is the reason the version has a third digit. v0.2 built the learning structure but shipped measurements that were wrong — 개조식 lists counted as one sentence, a baseline of 0 reported as a deviation, a script path that could not run from the user's working directory at all. The structure learns; until those were fixed, what it learned from was not trustworthy. See [ROADMAP.md](ROADMAP.md#v021--계측-신뢰-현재).
 
 ## Install
 
@@ -105,22 +108,40 @@ Sentence length, imagery, and formality all bend with the mode. How certain you 
 ## The metrics script
 
 ```bash
-# 코퍼스 지표 계산
-python scripts/voice_stats.py ~/.claude/my-writing-voice/corpus/*.md --json > ~/.claude/my-writing-voice/metrics.json
+# 코퍼스 지표 계산 — 절대 경로, python3, 그리고 > 대신 --out
+python3 ~/.claude/skills/my-writing-voice/scripts/voice_stats.py ~/.claude/my-writing-voice/corpus/*.md --out ~/.claude/my-writing-voice/metrics.json
 
 # 초안이 내 문체에서 얼마나 벗어났는지
-python scripts/voice_stats.py draft.md --compare ~/.claude/my-writing-voice/metrics.json
+python3 ~/.claude/skills/my-writing-voice/scripts/voice_stats.py draft.md --compare ~/.claude/my-writing-voice/metrics.json
 ```
 
-Standard library only, no dependencies. The metrics are shallow on purpose: they catch drift toward generic prose, not literary quality. A sample of what it caught on a deliberately drifted draft:
+Standard library only, no dependencies. Use `--out`, not `> metrics.json`: the shell empties the target before the script runs, so any failure destroys the baseline you were comparing against.
+
+The metrics are shallow on purpose — they catch drift toward generic prose, not literary quality. What that looks like on a deliberately drifted draft:
 
 ```text
-connectives_per_100_sent      0.0      90.0   +90.00  (기준 0)    점검 필요
-한다체                        0.833     0.200   -0.633              점검 필요
-합니다체                      0.000     0.800   +0.800              점검 필요
+지표                             기준      초안   차이                     판정
+sent_len_mean                    28.0      61.5   +33.50 (+120%)           확인 필요
+sent_len_sd                      14.2       3.1   -11.10 (-78%)            확인 필요
+drift_markers_per_100_sent        2.1      45.0   +42.90 (+2043%)          확인 필요
+connectives_per_100_sent          0.0      90.0   +90.00 (기준 0)          근거 없음
 ```
 
-Flagged is not the same as wrong. A 사업계획서 *should* have shorter sentences than a memoir. The skill's job is to tell genre adaptation apart from drift, and record which is which.
+Two things are load-bearing in that output.
+
+**`근거 없음` is not a finding.** The baseline is 0 because one sample happened to contain no connectives — that is a missing measurement, not evidence that the writer avoids them. Reporting it as a deviation would contradict this skill's own rule that a trait needs two samples before it counts. The tool refuses to flag it.
+
+**A falling `sent_len_sd` is the worse signal.** Flagged is not the same as wrong: a 사업계획서 *should* have shorter sentences than a memoir. But variance is what makes prose sound like a person, so a draft that has been smoothed toward the corpus mean has drifted in the direction the tool is least able to see. The comparison is written to raise questions, never to prescribe edits.
+
+Exit codes: `0` clean, `2` something flagged, `1` the tool failed.
+
+### Tests
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+26 regression tests, standard library only, run on Python 3.9/3.11/3.13 in CI. Each one pins a measurement that was once wrong — 개조식 lists counted as one long sentence, `1,200억` counted as a comma, `즉시` counted as the connective `즉`, TTR that fell with length so no draft could ever match a corpus.
 
 ## Structure
 
@@ -134,9 +155,17 @@ my-writing-voice/
 │   ├── mode-playbooks.md           # per-mode transfer rules
 │   ├── learning-protocol.md        # store updates, precedence, anti-drift
 │   └── profile-template.md         # empty skeleton for a new store
-└── scripts/
-    └── voice_stats.py              # metrics + draft comparison
+├── scripts/
+│   └── voice_stats.py              # metrics + draft comparison
+└── tests/
+    └── test_voice_stats.py         # regression suite (CI: 3.9 / 3.11 / 3.13)
 ```
+
+## Requirements and portability
+
+Claude Code only. The skill assumes a POSIX shell, `python3` on PATH, and a writable `~/.claude/`. The voice store is a real directory on your machine, so claude.ai chat and Cowork — which have no filesystem of that kind — cannot read or update it; there the skill degrades to a qualitative check with no memory between sessions.
+
+Not to be confused with Anthropic's built-in `my-writing-style` / `setup-writing-style`, which capture a style preset. This one keeps a corpus of your actual writing on disk and verifies drafts against measured statistics of it.
 
 ## Boundaries
 

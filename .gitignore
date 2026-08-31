@@ -1,10 +1,11 @@
 # The voice store is personal data and lives in ~/.claude/my-writing-voice/.
 # These patterns exist so a copy placed here by accident is never committed.
-corpus/
-profile.md
-metrics.json
-feedback.md
-references/baseline-voice.md
+# Anchored to the repository root: docs/profile.md must stay committable.
+/corpus/
+/profile.md
+/metrics.json
+/feedback.md
+/references/baseline-voice.md
 
 __pycache__/
 *.pyc

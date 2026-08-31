@@ -1,6 +1,6 @@
 ---
 name: my-writing-voice
-description: Learn, store, and apply the user's own writing voice across drafts, rewrites, continuations, and edits, improving with every session. Use when the user asks to write in their voice, keep their tone, make text sound like them, register or update a writing sample, give feedback on a draft's style, or check their voice profile. Korean-first, works for any language. Triggers include 내 문체로, 내 스타일로 써줘, 톤 유지해줘, 문체 등록, 문체 학습, 이 문장 나답게.
+description: Measure, store, and reproduce the user's own writing voice, verifying each draft against measured statistics of their real corpus rather than against a remembered impression. Distinct from style presets: this skill keeps a local corpus, computes a fingerprint, and checks drafts against it, improving with every session. Use when the user asks to write in their voice, keep their tone, make text sound like them, register or update a writing sample, give feedback on a draft's style, or check their voice profile. Korean-first, works for any language. Triggers include 내 문체로, 내 스타일로 써줘, 톤 유지해줘, 문체 등록, 문체 학습, 이 문장 나답게.
 ---
 
 # My Writing Voice
@@ -63,10 +63,11 @@ Route on what the user is asking for. Most requests are 쓰기 or 다듬기.
 
 1. Confirm the text is the user's own writing. Quotations, source material, and another author's prose are never voice sources.
 2. Save as `corpus/YYYY-MM-DD-<mode>-<n>.md` with front matter: `mode`, `date`, `source: user`, `chars`.
-3. Recompute metrics:
+3. Recompute metrics. Use the absolute path — the working directory is the user's, not the skill's — and `--out`, never a `>` redirect, which empties the baseline before the script runs:
    ```bash
-   python scripts/voice_stats.py ~/.claude/my-writing-voice/corpus/*.md --json > ~/.claude/my-writing-voice/metrics.json
+   python3 ~/.claude/skills/my-writing-voice/scripts/voice_stats.py ~/.claude/my-writing-voice/corpus/*.md --out ~/.claude/my-writing-voice/metrics.json
    ```
+   If the skill is installed somewhere else, resolve the path from this file's own location before running it. If `python3` is missing, say so rather than falling through to a silent qualitative check.
 4. Update `profile.md` using traits that repeat across samples, not one-off expressions. Append a dated line to 학습 기록.
 
 ### 쓰기 and 다듬기 (the verify loop)
@@ -76,12 +77,20 @@ This is the difference between imitation and transfer. Do not skip step 3.
 1. Draft for the selected mode and reader, applying only the strongest supported traits.
 2. Measure the draft:
    ```bash
-   python scripts/voice_stats.py draft.md --compare ~/.claude/my-writing-voice/metrics.json
+   python3 ~/.claude/skills/my-writing-voice/scripts/voice_stats.py draft.md --compare ~/.claude/my-writing-voice/metrics.json
    ```
-3. Reconcile. Where the draft deviates beyond tolerance, decide per item whether the genre justifies it (a 사업계획서 should have shorter sentences than a memoir) or whether it is model drift toward generic prose. Revise the drift, keep the justified deviation, and record the reason.
+3. Read the flags as questions, not instructions. For each one, ask whether the genre justifies it (a 사업계획서 should have shorter sentences than a memoir) or whether it is model drift toward generic prose. Change a sentence only when you can name which of the two it is. Record the reason either way.
 4. Return the finished text.
 
-If Python is unavailable, do step 2 by reading: compare sentence length, 종결어미, and connective habits against `profile.md` by eye, and say the check was qualitative.
+**What the flags do not license.** The metrics are a small, shallow sample of what makes prose sound like a person, and moving a draft toward the corpus mean on every flagged row is itself a kind of drift — a flatter one. Three rules keep the loop honest:
+
+- `근거 없음` means the baseline was 0 or the corpus was too thin. It is not a deviation. Do not act on it.
+- `구별 안 됨` means the draft is too short to tell a real shift from noise. Do not act on it either.
+- A **fall** in `sent_len_sd` is worse than a rise. Variance is the writer; the mean is the genre. Never edit toward lower variance to clear a flag.
+
+The exit code says the same thing: `0` clean, `2` something to ask about, `1` the tool itself failed.
+
+If `python3` or the script is unavailable, do step 2 by reading — compare sentence length, 종결어미, and connective habits against `profile.md` by eye — and say plainly that the check was qualitative. Do not describe an unverified draft as verified.
 
 ### 학습 (capture feedback)
 
@@ -111,6 +120,8 @@ Honor an explicitly selected mode; otherwise infer from purpose, audience, and o
 When the corpus mode and the target mode differ, transfer durable traits rather than forcing the sample's surface form onto the target. Carry concrete observation and restrained judgment into a business document without copying long narrative sentences.
 
 Load `references/mode-playbooks.md` when a mode is unfamiliar or the transfer is difficult.
+
+Load `references/essay-craft.md` when the user asks for help with the structure or material of a personal essay — diagnosing a draft, ordering episodes, deciding what a chapter is for. That file covers craft, not voice, and labels how far each claim is from the research behind it. Keep the two separate: voice work never overrides what the user chose to say.
 
 ## Building the Profile
 
