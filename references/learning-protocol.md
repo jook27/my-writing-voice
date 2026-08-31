@@ -39,8 +39,12 @@ Store the sample **verbatim**, including its errors. The corpus is evidence, not
 Then:
 
 ```bash
-python scripts/voice_stats.py ~/.claude/my-writing-voice/corpus/*.md --json > ~/.claude/my-writing-voice/metrics.json
+python3 ~/.claude/skills/my-writing-voice/scripts/voice_stats.py ~/.claude/my-writing-voice/corpus/*.md --out ~/.claude/my-writing-voice/metrics.json
 ```
+
+`--out` writes through a temp file and renames. A `>` redirect empties `metrics.json` before the script starts, so a failed run leaves you with no baseline and the next `--compare` fails on an empty file.
+
+The script reports the store's confidence with the same 1,500-character threshold this document uses, and `--compare` refuses to call anything drift while the baseline is below it. Code and protocol have to agree, or the protocol is decoration.
 
 Then update `profile.md`:
 
