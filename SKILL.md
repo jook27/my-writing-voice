@@ -33,6 +33,8 @@ Ask once, concisely, for everything needed:
 
 Then register the sample before drafting. 1,000 characters is a recommendation, not a rejection threshold — accept anything that reveals a usable voice, and say so plainly when a sample is too thin to support confident inference.
 
+Set the expectation at the same time. Below 1,500 characters total, `--compare` reports 참고 for everything and refuses to call anything drift; that is deliberate, not a malfunction. Tell the user what the store can and cannot do yet rather than letting the first verify loop look broken.
+
 If the user supplies a sample but no task, acknowledge receipt, name the likely mode, and ask what to write. Do not generate an unsolicited piece to demonstrate the style.
 
 ### Warm start — the store has a profile
@@ -57,7 +59,7 @@ Route on what the user is asking for. Most requests are 쓰기 or 다듬기.
 | 쓰기 | 내 문체로 ~ 써줘 | Draft in the target mode, then run the verify loop |
 | 다듬기 | 이 글 나답게 다듬어줘 | Minimal edits toward the profile; keep good original sentences |
 | 학습 | 이건 내 톤이 아니야 / 이 표현 좋다 | Append a rule to `feedback.md` with the reason |
-| 진단 | 내 문체 프로필 보여줘 | Report profile, per-mode coverage, corpus size, recent learning |
+| 진단 | 내 문체 프로필 보여줘 | Report profile, per-mode coverage, corpus size, confidence, recent learning |
 
 ### 등록 (register a sample)
 
@@ -69,6 +71,7 @@ Route on what the user is asking for. Most requests are 쓰기 or 다듬기.
    ```
    If the skill is installed somewhere else, resolve the path from this file's own location before running it. If `python3` is missing, say so rather than falling through to a silent qualitative check.
 4. Update `profile.md` using traits that repeat across samples, not one-off expressions. Append a dated line to 학습 기록.
+5. Once the corpus holds three or more samples, run `--holdout` and record the result. It compares each sample against a baseline built from the others, so every flag it produces is a false alarm on the user's own writing — which is the only honest way to know whether the tolerances fit this writer. Report the false-positive rate on 진단.
 
 ### 쓰기 and 다듬기 (the verify loop)
 
@@ -145,7 +148,8 @@ A learning system that learns from its own output degrades. These rules keep the
 2. Repetition over recency. A trait needs support in more than one sample before it enters `profile.md` as durable. Single-sample observations stay marked provisional.
 3. Explicit beats inferred. A rule in `feedback.md` wins over a statistic.
 4. Deviation is not always error. Genre-driven differences are correct; record the reason rather than "fixing" them.
-5. Never fabricate corpus. If the store is empty, say so; do not invent a profile.
+5. Never fabricate corpus. If the store is empty, say so; do not invent a profile. Text this skill wrote for a demonstration, an example, or a test is not the user's writing either.
+6. Never edit toward the corpus mean to clear a flag. Ironing out variance is drift in the direction the metrics cannot see. See the verify loop above.
 
 Load `references/learning-protocol.md` for the full update procedure and the conflict rules.
 

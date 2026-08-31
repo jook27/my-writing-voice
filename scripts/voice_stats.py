@@ -330,6 +330,12 @@ def analyze(docs, metas=None):
 # metric -> (tolerance, kind); "rel" = fraction of baseline, "abs" = absolute
 # ttr is absent on purpose: it is length-dependent and not comparable. mattr
 # replaces it and is only compared when both sides have a full window.
+#
+# These numbers are NOT calibrated. They were chosen by hand, and the honest
+# statement about them is that nobody has measured how much a given writer
+# varies between their own pieces. Run --holdout once the corpus has three or
+# more samples: it measures exactly that, and prints tolerances derived from
+# the writer's own spread instead of from a guess.
 TOLERANCE = {
     "sent_len_mean": (0.20, "rel"),
     "sent_len_sd": (0.35, "rel"),
@@ -439,6 +445,81 @@ def compare(draft, base):
     return 2 if (flagged and not thin_base) else 0
 
 
+# ---------------------------------------------------------------------- holdout
+
+def holdout(docs, metas):
+    """Leave-one-out over the corpus. Every fold's draft is the writer's own
+    writing, so every flag is a false positive by construction.
+
+    Two things come out of it: how often the tool cries wolf on the writer's
+    real prose, and how wide the tolerances would have to be to stop.
+    """
+    n = len(docs)
+    if n < 3:
+        print(f"홀드아웃에는 코퍼스 3편 이상이 필요합니다 (현재 {n}편).\n"
+              "  본인 글끼리의 자연 변동폭을 재는 기능이라, 표본이 그보다 적으면 "
+              "변동폭이 아니라 우연을 재게 됩니다.", file=sys.stderr)
+        return 1
+
+    stats = {k: {"folds": 0, "flags": 0, "worst": 0.0} for k in TOLERANCE}
+    skipped = 0
+
+    for i in range(n):
+        rest = [d for j, d in enumerate(docs) if j != i]
+        rest_meta = [m for j, m in enumerate(metas) if j != i] if metas else None
+        base = analyze(rest, rest_meta)
+        if not base["reliable"]:
+            skipped += 1
+            continue
+        draft = analyze([docs[i]])
+        for key, (tol, kind) in TOLERANCE.items():
+            d, b = draft.get(key), base.get(key)
+            if d is None or b is None or (kind == "rel" and not b):
+                continue
+            spread = abs(d - b) / abs(b) if kind == "rel" else abs(d - b)
+            e = stats[key]
+            e["folds"] += 1
+            e["worst"] = max(e["worst"], spread)
+            v, _ = verdict_for(key, draft, base, tol, kind)
+            if v == FLAG:
+                e["flags"] += 1
+
+    print(f"홀드아웃 — 코퍼스 {n}편, 각 편을 나머지로 만든 기준선에 대조\n")
+    if skipped:
+        print(f"! {skipped}개 폴드는 기준선이 {MIN_BASELINE_CHARS}자 미만이라 제외했습니다.\n")
+
+    evaluated = [k for k in TOLERANCE if stats[k]["folds"]]
+    if not evaluated:
+        print("평가할 수 있는 폴드가 없습니다. 코퍼스를 더 모으십시오.")
+        return 1
+
+    print(pad("지표", 30) + pad("폴드", 6, True) + pad("오탐", 6, True)
+          + pad("오탐률", 9, True) + pad("현재 허용치", 14, True)
+          + pad("실측 최대", 11, True) + pad("권장", 9, True))
+    print("-" * 90)
+    total_folds = total_flags = 0
+    for key in evaluated:
+        e = stats[key]
+        tol, kind = TOLERANCE[key]
+        rate = e["flags"] / e["folds"]
+        total_folds += e["folds"]
+        total_flags += e["flags"]
+        suggest = round(e["worst"] * 1.2, 2)
+        print(pad(key, 30) + pad(e["folds"], 6, True) + pad(e["flags"], 6, True)
+              + pad(f"{rate:.0%}", 9, True) + pad(f"{tol:.2f}", 14, True)
+              + pad(f"{e['worst']:.2f}", 11, True)
+              + pad(f"{suggest:.2f}" + ("" if suggest > tol else " ok"), 9, True))
+
+    overall = total_flags / total_folds if total_folds else 0
+    print("\n" + "-" * 90)
+    print(f"전체 오탐률 {overall:.0%} ({total_flags}/{total_folds})")
+    print("이 표의 초안은 전부 사용자 본인 글입니다. 따라서 '오탐'은 전부 허위 경보이고,")
+    print("오탐률이 높은 지표는 글이 아니라 허용치가 틀린 것입니다.")
+    print("'권장'은 실측 최대 편차에 20% 여유를 준 값입니다 — 현재 허용치보다 크면 넓히십시오.")
+    print("폴드 간 변동이 유난히 큰 지표는 그 사람에게 무의미한 지표일 수 있습니다.")
+    return 0
+
+
 # ------------------------------------------------------------------------- main
 
 def main():
@@ -449,6 +530,10 @@ def main():
                     help="write metrics JSON to PATH atomically (never truncates on failure)")
     ap.add_argument("--compare", metavar="METRICS",
                     help="compare against a metrics.json baseline")
+    ap.add_argument("--holdout", action="store_true",
+                    help="leave-one-out over the given corpus: measure how often the "
+                         "writer's own writing is flagged, and what the tolerances "
+                         "should be (needs 3+ samples)")
     args = ap.parse_args()
 
     paths = expand(args.files)
@@ -466,6 +551,9 @@ def main():
     if not docs:
         print("읽을 수 있는 텍스트가 없습니다.", file=sys.stderr)
         return 1
+
+    if args.holdout:
+        return holdout(docs, metas)
 
     metrics = analyze(docs, metas)
 
